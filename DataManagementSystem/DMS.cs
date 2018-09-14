@@ -1,17 +1,28 @@
 ﻿using System;
+using System.IO;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Formatters.Binary;
 
 namespace DataManagementSystem
 {
-    public class DMS
+    public class DMS<T> where T : class
     {
+        //CONST
+        const string debugprefix = "DMS: ";
+
         //EVENTS
-        public delegate void FileSavedDelegate(DMS sender, string path);
+        public delegate void FileSavedDelegate(DMS<T> sender, string path);
         public event FileSavedDelegate FileSaved;
+        public delegate void FileUpdatedDelegate(ref T obj);
+        public event FileUpdatedDelegate FileUpdated;
 
         //READONLY PROPERTIES
         public WorkingMode Mode { get; private set; }
         public string PathToFile { get; private set; }
         public bool FileChanged { get; private set; }
+
+        //VARIABLES
+        T DataObject;
 
         //ENUMS
         public enum WorkingMode
@@ -20,8 +31,9 @@ namespace DataManagementSystem
             ProjectFile = 1
         }
 
-        public DMS(WorkingMode mode, string file)
+        public DMS(ref T obj, WorkingMode mode, string file)
         {
+            DataObject = obj;
             Mode = mode;
             PathToFile = file;
             FileChanged = false;
@@ -32,32 +44,59 @@ namespace DataManagementSystem
             return "This library was created by adan2013. More info and full documentation you can find here: https://github.com/adan2013/DataManagementSystem";
         }
 
-        #region "SAVING"
+        #region "RECOVERY"
 
-        public bool SaveAs(string newpath, bool DeleteExistFile)
+        public bool LoadFromSource()
         {
-            //TODO save as
-            if(System.IO.File.Exists(newpath))
-            {
-                if(DeleteExistFile)
-                {
-                    try
-                    {
-                        System.IO.File.Delete(newpath);
-                    }
-                    catch { return false; }
-                }
-                else { return false; }
-            }
-            PathToFile = newpath;
-            SaveChanges();
+            return LoadFromFile(PathToFile);
+        }
+
+        private bool LoadFromFile(string path)
+        {
+            if (PathToFile == "" || !File.Exists(PathToFile)) { return false; }
+            T o = DeserializeObject(PathToFile);
+            if (o == null) { return false; }
+            DataObject = o;
+            FileUpdated?.Invoke(ref DataObject);
             return true;
         }
 
-        public void SaveChanges()
+        #endregion
+
+        #region "SAVING"
+
+        public bool SaveAs(string newpath)
         {
-            //TODO save changes
-            FileSaved(this, PathToFile);
+            if(Mode == WorkingMode.StaticFile)
+            {
+                System.Diagnostics.Debug.WriteLine(debugprefix + "SaveAs it's only available in ProjectFile mode!");
+                return false;
+            }
+            PathToFile = newpath;
+            FileChanged = true;
+            return SaveChanges();
+        }
+
+        public bool SaveChanges()
+        {
+            if(!FileChanged)
+            {
+                System.Diagnostics.Debug.WriteLine(debugprefix + "No changes detected!");
+                return false;
+            }
+            bool r = SerializeObject(DataObject, PathToFile);
+            if(r)
+            {
+                FileChanged = false;
+                FileSaved?.Invoke(this, PathToFile);
+                return true;
+            }
+            return false;
+        }
+
+        public void CheckChanges()
+        {
+            FileChanged = true;
         }
 
         #endregion
@@ -105,5 +144,34 @@ namespace DataManagementSystem
         }
 
         #endregion
+
+        #region "SERIALIZATION"
+
+        private bool SerializeObject(T obj, string path)
+        {
+            try
+            {
+                IFormatter formatter = new BinaryFormatter();
+                Stream stream = new FileStream(path, FileMode.Create, FileAccess.Write);
+                formatter.Serialize(stream, obj);
+                stream.Close();
+                return true;
+            }
+            catch { return false;  }
+        }
+
+        private T DeserializeObject(string path)
+        {
+            try
+            {
+                IFormatter formatter = new BinaryFormatter();
+                Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read);
+                return (T)formatter.Deserialize(stream);
+            }
+            catch { return null; }
+        }
+
+        #endregion
+
     }
 }
