@@ -9,8 +9,11 @@ namespace DataManagementSystem
     public class DMS<T> where T : class
     {
         //CONST
-        const string debugprefix = "DMS: ";
-        const int defaultlimitundoredo = 8;
+        const string DebugPrefix = "DMS: ";
+        const string UndoRedoFilePrefix = "UR-DMS";
+        const string AutoSaveFilePrefix = "AS-DMS";
+        const string TempFileExtension = ".dms";
+        const int DefaultLimitUndoRedo = 8;
 
         //EVENTS
         public delegate void FileSavedDelegate(DMS<T> sender, string path);
@@ -19,27 +22,44 @@ namespace DataManagementSystem
         public event FileUpdatedDelegate FileUpdated;
 
         //READONLY PROPERTIES
+        public string UID { get; private set; }
         public WorkingState Mode { get; private set; }
         public string PathToFile { get; private set; }
         public bool FileChanged { get; private set; }
         public bool UndoRedoActivated { get; private set; }
-        public bool UndoAvailable { get; private set; }
-        public bool RedoAvailable { get; private set; }
+        public bool UndoAvailable
+        {
+            get
+            {
+                if (UndoHistory.Count > 0 & UndoRedoActivated) { return true; } else { return false; }
+            }
+            set { }
+        }
+        public bool RedoAvailable
+        {
+            get
+            {
+                if (RedoHistory.Count > 0 & UndoRedoActivated) { return true; } else { return false; }
+            }
+            set { }
+        }
+
+        //PROPERTIES
         public int LimitUndoRedo
         {
             get
             {
-                return _LimitUndoRedo;
+                return pLimitUndoRedo;
             }
             private set
             {
                 if (value > 0 & value < 11)
                 {
-                    _LimitUndoRedo = value;
+                    pLimitUndoRedo = value;
                 }
                 else
                 {
-                    DebugLog("Correct value of Undo/Redo limit: 1-10, Default: " + defaultlimitundoredo);
+                    DebugLog("Correct value of Undo/Redo limit: 1-10, Default: " + DefaultLimitUndoRedo);
                 }
             }
         }
@@ -49,8 +69,8 @@ namespace DataManagementSystem
         bool DebugMode = true;
         Stack<HistoryUndoRedo> UndoHistory = new Stack<HistoryUndoRedo>();
         Stack<HistoryUndoRedo> RedoHistory = new Stack<HistoryUndoRedo>();
-        int _LimitUndoRedo = defaultlimitundoredo;
-        int _StackUndoRedoCursor = 0;
+        int pLimitUndoRedo = DefaultLimitUndoRedo;
+        int pStackUndoRedoCursor = 0;
 
         //ENUMS
         public enum WorkingState
@@ -66,12 +86,29 @@ namespace DataManagementSystem
             public string filename;
         }
 
-        public DMS(ref T obj, WorkingState mode, string file)
+        public DMS(string id, ref T obj, WorkingState mode, string file)
         {
+            if (!ValidateID(id))
+            {
+                throw new Exception("Incorrect ID value! Check documentation for more information!");
+            }
+            UID = id.ToUpper();
             DataObject = obj;
             Mode = mode;
             PathToFile = file;
             FileChanged = false;
+            DeleteCheckPoints();
+        }
+
+        private bool ValidateID(string input)
+        {
+            if (input.Length == 0 | input.Length > 10) { return false; }
+            input = input.ToUpper();
+            for (int i = 0; i < input.Length; i++)
+            {
+                if ("1234567890QWERTYUIOPASDFGHJKLZXCVBNM".IndexOf(input.Substring(i, 1)) < 0) { return false; }
+            }
+            return true;
         }
 
         public static string GetInfo()
@@ -150,32 +187,39 @@ namespace DataManagementSystem
             DeleteUndoHistory();
             DeleteRedoHistory();
             UndoRedoActivated = true;
-            _LimitUndoRedo = limit;
+            pLimitUndoRedo = limit;
+            DeleteCheckPoints();
         }
 
         public void DisableUndoRedo()
         {
-            ActivateUndoRedo(defaultlimitundoredo);
+            ActivateUndoRedo(DefaultLimitUndoRedo);
             UndoRedoActivated = false;
         }
 
-        public void AddCheckPoint(string info = "")
+        public bool AddCheckPoint(string info = "")
         {
-            if (!UndoRedoActivated) { return; }
+            if (!UndoRedoActivated) { return false; }
             FileChanged = true;
-
-            //TODO add checkpoint
+            HistoryUndoRedo f;
+            f.filename = CreateUndoFile();
+            f.message = info;
+            if (f.filename == "") { return false; }
+            DeleteRedoHistory();
+            UndoHistory.Push(f);
+            DebugLog("New Check Point! File: \"" + f.filename + "\", Message: \"" + f.message + "\"");
+            return true;
         }
 
         public void Undo()
         {
-            if (!UndoRedoActivated) { return; }
+            if (!UndoRedoActivated | !UndoAvailable) { return; }
             //TODO undo
         }
 
         public void Redo()
         {
-            if (!UndoRedoActivated) { return; }
+            if (!UndoRedoActivated | !RedoAvailable) { return; }
             //TODO redo
         }
 
@@ -199,9 +243,27 @@ namespace DataManagementSystem
             return r;
         }
 
-        private void ManageUndoRedoHistory()
+        private string CreateUndoFile()
         {
-            //TODO magange undo redo history
+            string guid = Guid.NewGuid().ToString();
+            string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\";
+            string f = UndoRedoFilePrefix + "-" + UID + "-" + guid + TempFileExtension;
+            bool r = SerializeObject(ref DataObject, d + f);
+            if (r) { return f; } else { return ""; }
+        }
+
+        private void DeleteCheckPoints()
+        {
+            string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates);
+            string f = UndoRedoFilePrefix + "-" + UID + "*" + TempFileExtension;
+            foreach (string i in Directory.GetFiles(d, f))
+            {
+                try
+                {
+                    File.Delete(i);
+                    DebugLog("Check Point deleted! File: \"" + new FileInfo(i).Name + "\"");
+                } catch { }
+            }
         }
 
         private void DeleteUndoHistory()
@@ -287,7 +349,7 @@ namespace DataManagementSystem
 
         private void DebugLog(string message)
         {
-            if (DebugMode) { System.Diagnostics.Debug.WriteLine(debugprefix + message); }
+            if (DebugMode) { System.Diagnostics.Debug.WriteLine(DebugPrefix + message); }
         }
 
         #endregion
