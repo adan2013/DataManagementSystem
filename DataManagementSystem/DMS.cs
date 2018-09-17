@@ -68,6 +68,7 @@ namespace DataManagementSystem
         T DataObject;
         bool DebugMode = true;
         Stack<HistoryUndoRedo> UndoHistory = new Stack<HistoryUndoRedo>();
+        HistoryUndoRedo CurrentCP = new HistoryUndoRedo("", "");
         Stack<HistoryUndoRedo> RedoHistory = new Stack<HistoryUndoRedo>();
         int pLimitUndoRedo = DefaultLimitUndoRedo;
         int pStackUndoRedoCursor = 0;
@@ -82,8 +83,14 @@ namespace DataManagementSystem
         //STRUCT
         private struct HistoryUndoRedo
         {
-            public string message;
-            public string filename;
+            public readonly string message;
+            public readonly string filename;
+
+            public HistoryUndoRedo(string message, string filename)
+            {
+                this.message = message;
+                this.filename = filename;
+            }
         }
 
         public DMS(string id, ref T obj, WorkingState mode, string file)
@@ -201,12 +208,11 @@ namespace DataManagementSystem
         {
             if (!UndoRedoActivated) { return false; }
             FileChanged = true;
-            HistoryUndoRedo f;
-            f.filename = CreateUndoFile();
-            f.message = info;
+            HistoryUndoRedo f = new HistoryUndoRedo(info, CreateCPFile());
             if (f.filename == "") { return false; }
             DeleteRedoHistory();
             UndoHistory.Push(f);
+            CurrentCP = new HistoryUndoRedo("", "");
             DebugLog("New Check Point! File: \"" + f.filename + "\", Message: \"" + f.message + "\"");
             return true;
         }
@@ -214,13 +220,38 @@ namespace DataManagementSystem
         public void Undo()
         {
             if (!UndoRedoActivated | !UndoAvailable) { return; }
-            //TODO undo
+            FileChanged = true;
+
+            if (CurrentCP.filename == "")
+            {
+                //save object in redo and load undo cp
+                HistoryUndoRedo f = new HistoryUndoRedo("", CreateCPFile());
+                if (f.filename == "") { return; }
+                RedoHistory.Push(f);
+            }
+            else
+            {
+                //save current cp in redo and load undo cp
+                RedoHistory.Push(CurrentCP);
+            }
+            CurrentCP = UndoHistory.Pop();
+            if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + CurrentCP.filename))
+            {
+                DebugLog("Undo operation completed!");
+            }
         }
 
         public void Redo()
         {
             if (!UndoRedoActivated | !RedoAvailable) { return; }
-            //TODO redo
+            FileChanged = true;
+ 
+            UndoHistory.Push(CurrentCP);
+            CurrentCP = RedoHistory.Pop();
+            if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + CurrentCP.filename))
+            {
+                DebugLog("Redo operation completed!");
+            }
         }
 
         public List<string> GetUndoHistory()
@@ -243,7 +274,7 @@ namespace DataManagementSystem
             return r;
         }
 
-        private string CreateUndoFile()
+        private string CreateCPFile()
         {
             string guid = Guid.NewGuid().ToString();
             string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\";
