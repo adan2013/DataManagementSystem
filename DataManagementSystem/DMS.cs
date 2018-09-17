@@ -31,7 +31,19 @@ namespace DataManagementSystem
         {
             get
             {
-                if (UndoHistory.Count > 0 & UndoRedoActivated) { return true; } else { return false; }
+                if (UndoHistory.Count > 0 & UndoRedoActivated)
+                {
+                    if (RedoHistory.Count >= pLimitUndoRedo)
+                    {
+                        DebugLog("You reached the limit of undo operations!");
+                        return false;
+                    }
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
             }
             set { }
         }
@@ -127,20 +139,20 @@ namespace DataManagementSystem
 
         public bool LoadFromSource()
         {
-            return LoadFromFile(PathToFile);
+            return LoadFromFile(PathToFile, true);
         }
 
-        private bool LoadFromFile(string path)
+        private bool LoadFromFile(string path, bool originalfile = false)
         {
-            if (PathToFile == "" || !File.Exists(PathToFile))
+            if (path == "" || !File.Exists(path))
             {
                 DebugLog("File \"" + path + "\" not found!");
                 return false;
             }
-            T o = DeserializeObject(PathToFile);
+            T o = DeserializeObject(path);
             if (o == null) { return false; }
             DataObject = o;
-            FileChanged = false;
+            if (originalfile) { FileChanged = false; }
             DebugLog("File \"" + path + "\" has been loaded!");
             FileUpdated?.Invoke(ref DataObject);
             return true;
@@ -304,7 +316,15 @@ namespace DataManagementSystem
 
         private void DeleteRedoHistory()
         {
-            RedoHistory.Clear();
+            while (RedoHistory.Count > 0)
+            {
+                HistoryUndoRedo f = RedoHistory.Pop();
+                try
+                {
+                    File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + f.filename);
+                    DebugLog("Check Point deleted! File: \"" + f.filename + "\"");
+                } catch { }
+            }
         }
 
         #endregion
@@ -380,7 +400,7 @@ namespace DataManagementSystem
 
         private void DebugLog(string message)
         {
-            if (DebugMode) { System.Diagnostics.Debug.WriteLine(DebugPrefix + message); }
+            if (DebugMode) { System.Diagnostics.Debug.WriteLine(DebugPrefix + message + " (undo-{0} currentinfo-{1} redo-{2})", UndoHistory.Count, CurrentCP.message, RedoHistory.Count); }
         }
 
         #endregion
