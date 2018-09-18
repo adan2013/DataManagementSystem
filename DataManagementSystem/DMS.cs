@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
+using System.Timers;
 
 namespace DataManagementSystem
 {
@@ -83,7 +84,7 @@ namespace DataManagementSystem
         HistoryUndoRedo CurrentCP = new HistoryUndoRedo("", "");
         Stack<HistoryUndoRedo> RedoHistory = new Stack<HistoryUndoRedo>();
         int pLimitUndoRedo = DefaultLimitUndoRedo;
-        int pStackUndoRedoCursor = 0;
+        Timer AStmr = new Timer();
 
         //ENUMS
         public enum WorkingState
@@ -117,6 +118,7 @@ namespace DataManagementSystem
             PathToFile = file;
             FileChanged = false;
             DeleteCheckPoints();
+            AStmr.Elapsed += TimerTick;
         }
 
         private bool ValidateID(string input)
@@ -331,22 +333,76 @@ namespace DataManagementSystem
 
         #region "AUTOSAVE"
 
-        public void CreateAutosave()
+        public void StartAutoSave(int Interval)
         {
-            //TODO create autosave
+            AStmr.Enabled = false;
+            if (Interval < 1 | Interval > 30)
+            {
+                DebugLog("Correct value of Undo/Redo limit: 1-30. AutoSave disabled!");
+                return;
+            }
+            AStmr.Interval = Interval * 60000;
+            AStmr.Enabled = true;
+            DebugLog("AutoSave activated! Interval: " + Interval + " minutes");
         }
 
-        public void CancelAutosave()
+        public void StopAutoSave()
         {
-            //TODO cancel autosave
+            AStmr.Enabled = false;
+            DebugLog("AutoSave was stopped!");
         }
 
-        public int GetTimeLastAutosave()
+        public bool CreateAutoSaveFile()
         {
-            //TODO last time autosave
-            return 0;
+            string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\";
+            string f = AutoSaveFilePrefix + "-" + UID + TempFileExtension;
+            bool r = SerializeObject(ref DataObject, d + f);
+            if (r) { DebugLog("New AutoSave! File: \"" + f + "\""); }
+            return r;
         }
 
+        public bool CheckAutoSave()
+        {
+            return File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension);
+        }
+
+        public void CancelAllAutoSaves()
+        {
+            if (CheckAutoSave())
+            {
+                try
+                {
+                    File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension);
+                    DebugLog("AutoSave file deleted!");
+                } catch { }
+            }
+        }
+
+        public void RestoreFromAutoSave()
+        {
+            if (CheckAutoSave())
+            {
+                try
+                {
+                    if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension))
+                    {
+                        DebugLog("The data was restored successfully!");
+                        CancelAllAutoSaves();
+                    }
+                }
+                catch { }
+            }
+            else
+            {
+                DebugLog("AutoSave file not found!");
+            }
+        }
+
+        private void TimerTick(Object source, ElapsedEventArgs e)
+        {
+            CreateAutoSaveFile();
+        }
+        
         #endregion
 
         #region "SERIALIZATION"
@@ -356,9 +412,11 @@ namespace DataManagementSystem
             try
             {
                 IFormatter formatter = new BinaryFormatter();
-                Stream stream = new FileStream(path, FileMode.Create, FileAccess.Write);
-                formatter.Serialize(stream, obj);
-                stream.Close();
+                using (Stream stream = new FileStream(path, FileMode.Create, FileAccess.Write))
+                {
+                    formatter.Serialize(stream, obj);
+                    stream.Close();
+                }
                 DebugLog("Serialization successful! File: \"" + path + "\"");
                 return true;
             }
@@ -372,9 +430,12 @@ namespace DataManagementSystem
         {
             try
             {
+                T o;
                 IFormatter formatter = new BinaryFormatter();
-                Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read);
-                T o = (T)formatter.Deserialize(stream);
+                using (Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read))
+                {
+                    o = (T)formatter.Deserialize(stream);
+                }
                 DebugLog("Deserialization successful! File: \"" + path + "\"");
                 return o;
             }
