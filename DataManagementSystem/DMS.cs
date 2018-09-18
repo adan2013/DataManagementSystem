@@ -21,6 +21,10 @@ namespace DataManagementSystem
         public event FileSavedDelegate FileSaved;
         public delegate void FileUpdatedDelegate(ref T obj);
         public event FileUpdatedDelegate FileUpdated;
+        public delegate void AutoSaveCreatedDelegate(ref T obj);
+        public event AutoSaveCreatedDelegate AutoSaveCreated;
+        public delegate void AutoSaveDetectedDelegate();
+        public event AutoSaveDetectedDelegate AutoSaveDetected;
 
         //READONLY PROPERTIES
         public string UID { get; private set; }
@@ -56,6 +60,7 @@ namespace DataManagementSystem
             }
             set { }
         }
+        public bool RestoreMode { get; private set; }
 
         //PROPERTIES
         public int LimitUndoRedo
@@ -117,7 +122,9 @@ namespace DataManagementSystem
             Mode = mode;
             PathToFile = file;
             FileChanged = false;
+            //UNDOREDO
             DeleteCheckPoints();
+            //AUTOSAVE
             AStmr.Elapsed += TimerTick;
         }
 
@@ -354,40 +361,43 @@ namespace DataManagementSystem
 
         public bool CreateAutoSaveFile()
         {
+            if (RestoreMode)
+            {
+                DebugLog("AutoSave is disabled in \"Restore Mode\"!");
+                return false;
+            }
             string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\";
             string f = AutoSaveFilePrefix + "-" + UID + TempFileExtension;
             bool r = SerializeObject(ref DataObject, d + f);
             if (r) { DebugLog("New AutoSave! File: \"" + f + "\""); }
             return r;
         }
-
-        public bool CheckAutoSave()
+        
+        public void DeleteRestoreFile()
         {
-            return File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension);
-        }
-
-        public void CancelAllAutoSaves()
-        {
-            if (CheckAutoSave())
+            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension))
             {
                 try
                 {
                     File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension);
+                    RestoreMode = false;
                     DebugLog("AutoSave file deleted!");
                 } catch { }
             }
         }
 
-        public void RestoreFromAutoSave()
+        public void LoadRestoreFile()
         {
-            if (CheckAutoSave())
+            if (RestoreMode)
             {
                 try
                 {
                     if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension))
                     {
+                        RestoreMode = false;
                         DebugLog("The data was restored successfully!");
-                        CancelAllAutoSaves();
+                        AutoSaveCreated?.Invoke(ref DataObject);
+                        DeleteRestoreFile();
                     }
                 }
                 catch { }
@@ -395,6 +405,16 @@ namespace DataManagementSystem
             else
             {
                 DebugLog("AutoSave file not found!");
+            }
+        }
+
+        public void CheckAutoSave()
+        {
+            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension))
+            {
+                RestoreMode = true;
+                DebugLog("Data ready to recover! Use LoadRestoreFile() or DeleteRestoreFile() to choose what you want to do...");
+                AutoSaveDetected?.Invoke();
             }
         }
 
