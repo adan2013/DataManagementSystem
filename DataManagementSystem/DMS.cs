@@ -11,27 +11,38 @@ namespace DataManagementSystem
     {
         //CONST
         const string DebugPrefix = "DMS: ";
-        const string UndoRedoFilePrefix = "UR-DMS";
-        const string AutoSaveFilePrefix = "AS-DMS";
+        const string UR_Prefix = "UR-DMS";
+        const string AS_Prefix = "AS-DMS";
+        const string BU_Prefix = "BU-DMS";
+
         const string TempFileExtension = ".dms";
+        const string InfoFileExtension = ".dmsinfo";
+
         const int DefaultLimitUndoRedo = 8;
 
         //EVENTS
-        public delegate void FileSavedDelegate(DMS<T> sender, string path);
         public event FileSavedDelegate FileSaved;
-        public delegate void FileUpdatedDelegate(ref T obj);
         public event FileUpdatedDelegate FileUpdated;
-        public delegate void AutoSaveCreatedDelegate(ref T obj);
+
         public event AutoSaveCreatedDelegate AutoSaveCreated;
-        public delegate void AutoSaveDetectedDelegate();
         public event AutoSaveDetectedDelegate AutoSaveDetected;
+
+        //DELEGATES
+        public delegate void FileSavedDelegate(DMS<T> sender, string path);
+        public delegate void FileUpdatedDelegate(ref T obj);
+
+        public delegate void AutoSaveCreatedDelegate(ref T obj);
+        public delegate void AutoSaveDetectedDelegate();
 
         //READONLY PROPERTIES
         public string UID { get; private set; }
-        public WorkingState Mode { get; private set; }
         public string PathToFile { get; private set; }
         public bool FileChanged { get; private set; }
+
         public bool UndoRedoActivated { get; private set; }
+        public bool AutoSaveActivated { get; private set; }
+        public bool BackUpActivated { get; private set; }
+
         public bool UndoAvailable
         {
             get
@@ -60,6 +71,7 @@ namespace DataManagementSystem
             }
             set { }
         }
+
         public bool RestoreMode { get; private set; }
 
         //PROPERTIES
@@ -84,34 +96,28 @@ namespace DataManagementSystem
         
         //VARIABLES
         T DataObject;
-        bool DebugMode = true;
-        Stack<HistoryUndoRedo> UndoHistory = new Stack<HistoryUndoRedo>();
-        HistoryUndoRedo CurrentCP = new HistoryUndoRedo("", "");
-        Stack<HistoryUndoRedo> RedoHistory = new Stack<HistoryUndoRedo>();
-        int pLimitUndoRedo = DefaultLimitUndoRedo;
-        Timer AStmr = new Timer();
 
-        //ENUMS
-        public enum WorkingState
-        {
-            StaticFile = 0,
-            ProjectFile = 1
-        }
+        Stack<UndoRedoHistory> UndoHistory = new Stack<UndoRedoHistory>();
+        UndoRedoHistory CurrentCP = new UndoRedoHistory("", "");
+        Stack<UndoRedoHistory> RedoHistory = new Stack<UndoRedoHistory>();
+
+        int pLimitUndoRedo = DefaultLimitUndoRedo;
+        Timer AutoSaveTMR = new Timer();
 
         //STRUCT
-        private struct HistoryUndoRedo
+        private struct UndoRedoHistory
         {
             public readonly string message;
             public readonly string filename;
 
-            public HistoryUndoRedo(string message, string filename)
+            public UndoRedoHistory(string message, string filename)
             {
                 this.message = message;
                 this.filename = filename;
             }
         }
 
-        public DMS(string id, ref T obj, WorkingState mode, string file)
+        public DMS(string id, ref T obj, string file)
         {
             if (!ValidateID(id))
             {
@@ -119,13 +125,12 @@ namespace DataManagementSystem
             }
             UID = id.ToUpper();
             DataObject = obj;
-            Mode = mode;
             PathToFile = file;
             FileChanged = false;
             //UNDOREDO
             DeleteCheckPoints();
             //AUTOSAVE
-            AStmr.Elapsed += TimerTick;
+            AutoSaveTMR.Elapsed += TimerTick;
         }
 
         private bool ValidateID(string input)
@@ -173,11 +178,6 @@ namespace DataManagementSystem
 
         public bool SaveAs(string newpath)
         {
-            if (Mode == WorkingState.StaticFile)
-            {
-                DebugLog("SaveAs it's only available in \"ProjectFile mode\"!");
-                return false;
-            }
             PathToFile = newpath;
             FileChanged = true;
             return SaveChanges();
@@ -210,30 +210,24 @@ namespace DataManagementSystem
 
         #region "UNDOREDO"
 
-        public void ActivateUndoRedo(int limit)
+        public void UndoRedoService(bool activation, int limit)
         {
+            UndoRedoActivated = activation;
             DeleteUndoHistory();
             DeleteRedoHistory();
-            UndoRedoActivated = true;
             pLimitUndoRedo = limit;
             DeleteCheckPoints();
-        }
-
-        public void DisableUndoRedo()
-        {
-            ActivateUndoRedo(DefaultLimitUndoRedo);
-            UndoRedoActivated = false;
         }
 
         public bool AddCheckPoint(string info = "")
         {
             if (!UndoRedoActivated) { return false; }
             FileChanged = true;
-            HistoryUndoRedo f = new HistoryUndoRedo(info, CreateCPFile());
+            UndoRedoHistory f = new UndoRedoHistory(info, CreateCPFile());
             if (f.filename == "") { return false; }
             DeleteRedoHistory();
             UndoHistory.Push(f);
-            CurrentCP = new HistoryUndoRedo("", "");
+            CurrentCP = new UndoRedoHistory("", "");
             DebugLog("New Check Point! File: \"" + f.filename + "\", Message: \"" + f.message + "\"");
             return true;
         }
@@ -246,7 +240,7 @@ namespace DataManagementSystem
             if (CurrentCP.filename == "")
             {
                 //save object in redo and load undo cp
-                HistoryUndoRedo f = new HistoryUndoRedo("", CreateCPFile());
+                UndoRedoHistory f = new UndoRedoHistory("", CreateCPFile());
                 if (f.filename == "") { return; }
                 RedoHistory.Push(f);
             }
@@ -278,7 +272,7 @@ namespace DataManagementSystem
         public List<string> GetUndoHistory()
         {
             List<string> r = new List<string>();
-            foreach(HistoryUndoRedo i in UndoHistory)
+            foreach(UndoRedoHistory i in UndoHistory)
             {
                 r.Add(i.message);
             }
@@ -288,7 +282,7 @@ namespace DataManagementSystem
         public List<string> GetRedoHistory()
         {
             List<string> r = new List<string>();
-            foreach (HistoryUndoRedo i in RedoHistory)
+            foreach (UndoRedoHistory i in RedoHistory)
             {
                 r.Add(i.message);
             }
@@ -299,7 +293,7 @@ namespace DataManagementSystem
         {
             string guid = Guid.NewGuid().ToString();
             string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\";
-            string f = UndoRedoFilePrefix + "-" + UID + "-" + guid + TempFileExtension;
+            string f = UR_Prefix + "-" + UID + "-" + guid + TempFileExtension;
             bool r = SerializeObject(ref DataObject, d + f);
             if (r) { return f; } else { return ""; }
         }
@@ -307,7 +301,7 @@ namespace DataManagementSystem
         private void DeleteCheckPoints()
         {
             string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates);
-            string f = UndoRedoFilePrefix + "-" + UID + "*" + TempFileExtension;
+            string f = UR_Prefix + "-" + UID + "*" + TempFileExtension;
             foreach (string i in Directory.GetFiles(d, f))
             {
                 try
@@ -327,7 +321,7 @@ namespace DataManagementSystem
         {
             while (RedoHistory.Count > 0)
             {
-                HistoryUndoRedo f = RedoHistory.Pop();
+                UndoRedoHistory f = RedoHistory.Pop();
                 try
                 {
                     File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + f.filename);
@@ -340,25 +334,23 @@ namespace DataManagementSystem
 
         #region "AUTOSAVE"
 
-        public void StartAutoSave(int Interval)
+        public void AutoSaveService(bool activation, int Interval)
         {
-            AStmr.Enabled = false;
             if (Interval < 1 | Interval > 30)
             {
                 DebugLog("Correct value of Undo/Redo limit: 1-30. AutoSave disabled!");
                 return;
             }
-            AStmr.Interval = Interval * 60000;
-            AStmr.Enabled = true;
-            DebugLog("AutoSave activated! Interval: " + Interval + " minutes");
+            AutoSaveActivated = activation;
+            AutoSaveTMR.Enabled = false;
+            AutoSaveTMR.Interval = Interval * 60000;
+            if(activation)
+            {
+                AutoSaveTMR.Enabled = true;
+                DebugLog("AutoSave activated! Interval: " + Interval + " minutes");
+            }
         }
-
-        public void StopAutoSave()
-        {
-            AStmr.Enabled = false;
-            DebugLog("AutoSave was stopped!");
-        }
-
+        
         public bool CreateAutoSaveFile()
         {
             if (RestoreMode)
@@ -367,19 +359,23 @@ namespace DataManagementSystem
                 return false;
             }
             string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\";
-            string f = AutoSaveFilePrefix + "-" + UID + TempFileExtension;
+            string f = AS_Prefix + "-" + UID + TempFileExtension;
             bool r = SerializeObject(ref DataObject, d + f);
-            if (r) { DebugLog("New AutoSave! File: \"" + f + "\""); }
+            if (r)
+            {
+                DebugLog("New AutoSave! File: \"" + f + "\"");
+                AutoSaveCreated?.Invoke(ref DataObject);
+            }
             return r;
         }
         
         public void DeleteRestoreFile()
         {
-            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension))
+            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_Prefix + "-" + UID + TempFileExtension))
             {
                 try
                 {
-                    File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension);
+                    File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_Prefix + "-" + UID + TempFileExtension);
                     RestoreMode = false;
                     DebugLog("AutoSave file deleted!");
                 } catch { }
@@ -392,11 +388,10 @@ namespace DataManagementSystem
             {
                 try
                 {
-                    if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension))
+                    if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_Prefix + "-" + UID + TempFileExtension))
                     {
                         RestoreMode = false;
                         DebugLog("The data was restored successfully!");
-                        AutoSaveCreated?.Invoke(ref DataObject);
                         DeleteRestoreFile();
                     }
                 }
@@ -404,13 +399,13 @@ namespace DataManagementSystem
             }
             else
             {
-                DebugLog("AutoSave file not found!");
+                DebugLog("Restore mode disabled!");
             }
         }
 
-        public void CheckAutoSave()
+        public void CheckRestoreFile()
         {
-            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AutoSaveFilePrefix + "-" + UID + TempFileExtension))
+            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_Prefix + "-" + UID + TempFileExtension))
             {
                 RestoreMode = true;
                 DebugLog("Data ready to recover! Use LoadRestoreFile() or DeleteRestoreFile() to choose what you want to do...");
@@ -468,20 +463,12 @@ namespace DataManagementSystem
         #endregion
 
         #region "DEBUG"
-
-        public void TurnOnDebugMode()
-        {
-            DebugMode = true;
-        }
-
-        public void TurnOffDebugMode()
-        {
-            DebugMode = false;
-        }
-
+        
         private void DebugLog(string message)
         {
-            if (DebugMode) { System.Diagnostics.Debug.WriteLine(DebugPrefix + message + " (undo-{0} currentinfo-{1} redo-{2})", UndoHistory.Count, CurrentCP.message, RedoHistory.Count); }
+        #if DEBUG
+            System.Diagnostics.Debug.WriteLine(DebugPrefix + message);
+        #endif
         }
 
         #endregion
