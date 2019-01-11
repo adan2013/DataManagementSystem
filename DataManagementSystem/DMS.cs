@@ -123,6 +123,10 @@ namespace DataManagementSystem
             {
                 throw new Exception("Incorrect ID value! Check documentation for more information!");
             }
+            if (obj == null)
+            {
+                throw new Exception("Data object is empty!");
+            }
             UID = id.ToUpper();
             DataObject = obj;
             PathToFile = file;
@@ -153,6 +157,11 @@ namespace DataManagementSystem
 
         public bool LoadFromSource()
         {
+            if (PathToFile == "")
+            {
+                DebugLog("Use \"SaveAs\" to define the save path!");
+                return false;
+            }
             return LoadFromFile(PathToFile, true);
         }
 
@@ -178,6 +187,11 @@ namespace DataManagementSystem
 
         public bool SaveAs(string newpath)
         {
+            if (newpath == "")
+            {
+                DebugLog("New path is empty!");
+                return false;
+            }
             PathToFile = newpath;
             FileChanged = true;
             return SaveChanges();
@@ -185,6 +199,11 @@ namespace DataManagementSystem
 
         public bool SaveChanges()
         {
+            if (PathToFile == "")
+            {
+                DebugLog("Use \"SaveAs\" to define the save path!");
+                return false;
+            }
             if (!FileChanged)
             {
                 DebugLog("No changes detected!");
@@ -391,6 +410,8 @@ namespace DataManagementSystem
                     if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_Prefix + "-" + UID + TempFileExtension))
                     {
                         RestoreMode = false;
+                        FileChanged = true;
+                        PathToFile = "";
                         DebugLog("The data was restored successfully!");
                         DeleteRestoreFile();
                     }
