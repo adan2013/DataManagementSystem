@@ -10,17 +10,17 @@ namespace DataManagementSystem
     public class DMS<T> where T : class
     {
         //CONST
-        const string DebugPrefix = "DMS: ";
-        const string UR_Prefix = "UR-DMS-";
-        const string AS_Prefix = "AS-DMS-";
-        const string AS_INFO_Prefix = "AS-INFO-DMS-";
-        const string BU_Prefix = "BU-DMS-";
-        const string BU_INFO_Prefix = "BU-INFO-DMS-";
+        const string DEBUG_PREFIX = "DMS: ";
+        const string UR_PREFIX = "UR-DMS-";
+        const string AS_PREFIX = "AS-DMS-";
+        const string AS_INFO_PREFIX = "AS-INFO-DMS-";
+        const string BU_PREFIX = "BU-DMS-";
+        const string BU_INFO_PREFIX = "BU-INFO-DMS-";
 
-        const string TempFileExtension = ".dms";
-        const string InfoFileExtension = ".dmsinfo";
+        const string TEMP_FILE_EXT = ".dms";
+        const string INFO_FILE_EXT = ".dmsinfo";
 
-        const int DefaultLimitUndoRedo = 8;
+        const int DEFAULT_UR_LIMIT = 8;
 
         //EVENTS
         public event FileSavedDelegate FileSaved;
@@ -53,7 +53,7 @@ namespace DataManagementSystem
                 {
                     if (RedoHistory.Count >= pLimitUndoRedo)
                     {
-                        DebugLog("You reached the limit of undo operations!");
+                        DebugMsg("You reached the limit of undo operations!");
                         return false;
                     }
                     return true;
@@ -91,7 +91,8 @@ namespace DataManagementSystem
                 }
                 else
                 {
-                    DebugLog("Correct value of Undo/Redo limit: 1-10, Default: " + DefaultLimitUndoRedo);
+                    DebugMsg("Correct value of Undo/Redo limit: 1-10, Default: " + DEFAULT_UR_LIMIT);
+                    pLimitUndoRedo = DEFAULT_UR_LIMIT;
                 }
             }
         }
@@ -103,7 +104,7 @@ namespace DataManagementSystem
         UndoRedoInfo CurrentCP = new UndoRedoInfo("", "");
         Stack<UndoRedoInfo> RedoHistory = new Stack<UndoRedoInfo>();
 
-        int pLimitUndoRedo = DefaultLimitUndoRedo;
+        int pLimitUndoRedo = DEFAULT_UR_LIMIT;
         Timer AutoSaveTMR = new Timer();
 
         //STRUCT
@@ -126,7 +127,8 @@ namespace DataManagementSystem
                 throw new Exception("Incorrect ID value! Check documentation for more information!");
             }
             UID = id.ToUpper();
-            DataObject = obj ?? throw new Exception("Data object is empty!");
+            T t = obj ?? throw new Exception("Data object is empty!");
+            DataObject = t;
             PathToFile = file;
             FileChanged = false;
             //UNDOREDO
@@ -157,7 +159,7 @@ namespace DataManagementSystem
         {
             if (PathToFile == "")
             {
-                DebugLog("Use \"SaveAs\" to define the save path!");
+                DebugMsg("Use \"SaveAs\" to define the save path!");
                 return false;
             }
             return LoadFromFile(PathToFile, true);
@@ -167,14 +169,14 @@ namespace DataManagementSystem
         {
             if (path == "" || !File.Exists(path))
             {
-                DebugLog("File \"" + path + "\" not found!");
+                DebugMsg("File \"" + path + "\" not found!");
                 return false;
             }
             T o = DeserializeObject(path);
             if (o == null) { return false; }
             DataObject = o;
             if (originalfile) { FileChanged = false; }
-            DebugLog("File \"" + path + "\" has been loaded!");
+            DebugMsg("File \"" + path + "\" has been loaded!");
             FileUpdated?.Invoke(ref DataObject);
             return true;
         }
@@ -187,7 +189,7 @@ namespace DataManagementSystem
         {
             if (newpath == "")
             {
-                DebugLog("New path is empty!");
+                DebugMsg("New path is empty!");
                 return false;
             }
             PathToFile = newpath;
@@ -199,19 +201,19 @@ namespace DataManagementSystem
         {
             if (PathToFile == "")
             {
-                DebugLog("Use \"SaveAs\" to define the save path!");
+                DebugMsg("Use \"SaveAs\" to define the save path!");
                 return false;
             }
             if (!FileChanged)
             {
-                DebugLog("No changes detected!");
+                DebugMsg("No changes detected!");
                 return false;
             }
             bool r = SerializeObject(ref DataObject, PathToFile);
             if (r)
             {
                 FileChanged = false;
-                DebugLog("File \"" + PathToFile + "\" has been saved!");
+                DebugMsg("File \"" + PathToFile + "\" has been saved!");
                 FileSaved?.Invoke(this, PathToFile);
                 return true;
             }
@@ -245,7 +247,7 @@ namespace DataManagementSystem
             DeleteRedoHistory();
             UndoHistory.Push(f);
             CurrentCP = new UndoRedoInfo("", "");
-            DebugLog("New Check Point! File: \"" + f.filename + "\", Message: \"" + f.message + "\"");
+            DebugMsg("New Check Point! File: \"" + f.filename + "\", Message: \"" + f.message + "\"");
             return true;
         }
 
@@ -269,7 +271,7 @@ namespace DataManagementSystem
             CurrentCP = UndoHistory.Pop();
             if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + CurrentCP.filename))
             {
-                DebugLog("Undo operation completed!");
+                DebugMsg("Undo operation completed!");
             }
         }
 
@@ -282,7 +284,7 @@ namespace DataManagementSystem
             CurrentCP = RedoHistory.Pop();
             if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + CurrentCP.filename))
             {
-                DebugLog("Redo operation completed!");
+                DebugMsg("Redo operation completed!");
             }
         }
 
@@ -310,7 +312,7 @@ namespace DataManagementSystem
         {
             string guid = Guid.NewGuid().ToString();
             string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\";
-            string f = UR_Prefix + UID + "-" + guid + TempFileExtension;
+            string f = UR_PREFIX + UID + "-" + guid + TEMP_FILE_EXT;
             bool r = SerializeObject(ref DataObject, d + f);
             if (r) { return f; } else { return ""; }
         }
@@ -318,13 +320,13 @@ namespace DataManagementSystem
         private void DeleteCheckPoints()
         {
             string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates);
-            string f = UR_Prefix + UID + "*" + TempFileExtension;
+            string f = UR_PREFIX + UID + "*" + TEMP_FILE_EXT;
             foreach (string i in Directory.GetFiles(d, f))
             {
                 try
                 {
                     File.Delete(i);
-                    DebugLog("Check Point deleted! File: \"" + new FileInfo(i).Name + "\"");
+                    DebugMsg("Check Point deleted! File: \"" + new FileInfo(i).Name + "\"");
                 } catch { }
             }
         }
@@ -342,7 +344,7 @@ namespace DataManagementSystem
                 try
                 {
                     File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + f.filename);
-                    DebugLog("Check Point deleted! File: \"" + f.filename + "\"");
+                    DebugMsg("Check Point deleted! File: \"" + f.filename + "\"");
                 } catch { }
             }
         }
@@ -355,8 +357,9 @@ namespace DataManagementSystem
         {
             if (Interval < 1 | Interval > 30)
             {
-                DebugLog("Correct value of Undo/Redo limit: 1-30. AutoSave disabled!");
-                return;
+                DebugMsg("Correct value of AutoSave Interval: 1-30. AutoSave disabled!");
+                activation = false;
+                Interval = 30;
             }
             AutoSaveActivated = activation;
             AutoSaveTMR.Enabled = false;
@@ -364,7 +367,7 @@ namespace DataManagementSystem
             if(activation)
             {
                 AutoSaveTMR.Enabled = true;
-                DebugLog("AutoSave activated! Interval: " + Interval + " minutes");
+                DebugMsg("AutoSave activated! Interval: " + Interval + " minutes");
             }
         }
         
@@ -372,17 +375,17 @@ namespace DataManagementSystem
         {
             if (RestoreMode)
             {
-                DebugLog("AutoSave is disabled in \"Restore Mode\"!");
+                DebugMsg("AutoSave is disabled in \"Restore Mode\"!");
                 return false;
             }
             string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\";
-            string f = AS_Prefix + UID + TempFileExtension;
+            string f = AS_PREFIX + UID + TEMP_FILE_EXT;
             bool r = SerializeObject(ref DataObject, d + f);
             if (r)
             {
                 DMSFileInfo i = new DMSFileInfo(DateTime.Now, PathToFile, d + f);
-                SerializeInfo(ref i, d + AS_INFO_Prefix + UID + InfoFileExtension);
-                DebugLog("New AutoSave! File: \"" + f + "\"");
+                SerializeInfo(ref i, d + AS_INFO_PREFIX + UID + INFO_FILE_EXT);
+                DebugMsg("New AutoSave! File: \"" + f + "\"");
                 AutoSaveCreated?.Invoke(ref DataObject);
             }
             return r;
@@ -390,17 +393,17 @@ namespace DataManagementSystem
         
         public void DeleteRestoreFile()
         {
-            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_Prefix + UID + TempFileExtension))
+            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_PREFIX + UID + TEMP_FILE_EXT))
             {
                 try
                 {
-                    File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_Prefix + UID + TempFileExtension);
-                    if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_INFO_Prefix + UID + InfoFileExtension))
+                    File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_PREFIX + UID + TEMP_FILE_EXT);
+                    if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_INFO_PREFIX + UID + INFO_FILE_EXT))
                     {
-                        File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_INFO_Prefix + UID + InfoFileExtension);
+                        File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_INFO_PREFIX + UID + INFO_FILE_EXT);
                     }
                     RestoreMode = false;
-                    DebugLog("AutoSave file deleted!");
+                    DebugMsg("AutoSave file deleted!");
                 } catch { }
             }
         }
@@ -411,12 +414,12 @@ namespace DataManagementSystem
             {
                 try
                 {
-                    if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_Prefix + UID + TempFileExtension))
+                    if (LoadFromFile(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_PREFIX + UID + TEMP_FILE_EXT))
                     {
                         RestoreMode = false;
                         FileChanged = true;
                         PathToFile = "";
-                        DebugLog("The data was restored successfully!");
+                        DebugMsg("The data was restored successfully!");
                         DeleteRestoreFile();
                     }
                 }
@@ -424,18 +427,18 @@ namespace DataManagementSystem
             }
             else
             {
-                DebugLog("Restore mode disabled!");
+                DebugMsg("Restore mode disabled!");
             }
         }
 
         public void CheckRestoreFile()
         {
-            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_Prefix + UID + TempFileExtension))
+            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_PREFIX + UID + TEMP_FILE_EXT))
             {
-                DMSFileInfo i = DeserializeInfo(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_INFO_Prefix + UID + InfoFileExtension);
+                DMSFileInfo i = DeserializeInfo(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_INFO_PREFIX + UID + INFO_FILE_EXT);
                 if (i == null) i = new DMSFileInfo(DateTime.Now, "", "");
                 RestoreMode = true;
-                DebugLog("Data ready to recover! Use LoadRestoreFile() or DeleteRestoreFile() to choose what you want to do...");
+                DebugMsg("Data ready to recover! Use LoadRestoreFile() or DeleteRestoreFile() to choose what you want to do...");
                 AutoSaveDetected?.Invoke(i.CreationTime, i.ProjectFile, i.AutoSaveFile);
             }
         }
@@ -459,11 +462,11 @@ namespace DataManagementSystem
                     formatter.Serialize(stream, obj);
                     stream.Close();
                 }
-                DebugLog("Serialization successful! File: \"" + path + "\"");
+                DebugMsg("Serialization successful! File: \"" + path + "\"");
                 return true;
             }
             catch {
-                DebugLog("Serialization error! File: \"" + path + "\"");
+                DebugMsg("Serialization error! File: \"" + path + "\"");
                 return false;
             }
         }
@@ -478,11 +481,11 @@ namespace DataManagementSystem
                 {
                     o = (T)formatter.Deserialize(stream);
                 }
-                DebugLog("Deserialization successful! File: \"" + path + "\"");
+                DebugMsg("Deserialization successful! File: \"" + path + "\"");
                 return o;
             }
             catch {
-                DebugLog("Deserialization error! File: \"" + path + "\"");
+                DebugMsg("Deserialization error! File: \"" + path + "\"");
                 return null;
             }
         }
@@ -519,10 +522,10 @@ namespace DataManagementSystem
 
         #region "DEBUG"
 
-        private void DebugLog(string message)
+        private void DebugMsg(string message)
         {
         #if DEBUG
-            System.Diagnostics.Debug.WriteLine(DebugPrefix + message);
+            System.Diagnostics.Debug.WriteLine(DEBUG_PREFIX + message);
         #endif
         }
 
