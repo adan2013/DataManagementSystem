@@ -106,6 +106,7 @@ namespace DataManagementSystem
 
         int pLimitUndoRedo = DEFAULT_UR_LIMIT;
         Timer AutoSaveTMR = new Timer();
+        string backupwarehouse = "";
 
         //STRUCT
         private struct UndoRedoInfo
@@ -353,21 +354,21 @@ namespace DataManagementSystem
 
         #region "AUTOSAVE"
 
-        public void AutoSaveService(bool activation, int Interval)
+        public void AutoSaveService(bool activation, int interval)
         {
-            if (Interval < 1 | Interval > 30)
+            if (interval < 1 | interval > 30)
             {
                 DebugMsg("Correct value of AutoSave Interval: 1-30. AutoSave disabled!");
                 activation = false;
-                Interval = 30;
+                interval = 30;
             }
             AutoSaveActivated = activation;
             AutoSaveTMR.Enabled = false;
-            AutoSaveTMR.Interval = Interval * 60000;
+            AutoSaveTMR.Interval = interval * 60000;
             if(activation)
             {
                 AutoSaveTMR.Enabled = true;
-                DebugMsg("AutoSave activated! Interval: " + Interval + " minutes");
+                DebugMsg("AutoSave activated! Interval: " + interval + " minutes");
             }
         }
         
@@ -447,7 +448,58 @@ namespace DataManagementSystem
         {
             CreateAutoSaveFile();
         }
-        
+
+        #endregion
+
+        #region "BACKUP"
+
+        public void BackUpService(bool activation, string warehouse)
+        {
+            if (!Directory.Exists(warehouse))
+            {
+                DebugMsg("Directory with backups doesn't exist!. BackUp disabled!");
+                activation = false;
+                warehouse = "";
+            }
+            BackUpActivated = activation;
+            backupwarehouse = warehouse;
+            if (activation)
+            {
+                DebugMsg("BackUp activated! Warehouse: \"" + warehouse + "\"");
+            }
+        }
+
+        public bool CreateBackUp()
+        {
+            //TODO createbackup
+            return true;
+        }
+
+        public List<DMSBackupInfo> GetBackUpList()
+        {
+            List<DMSBackupInfo> lst = new List<DMSBackupInfo>();
+            //TODO getbackuplist
+            return lst;
+        }
+
+        public bool LoadFromBackUp(DMSBackupInfo obj)
+        {
+            //TODO loadfrombackup
+            return true;
+        }
+
+        public bool DeleteBackUpFile(DMSBackupInfo obj)
+        {
+            if(obj==null || !File.Exists(obj.File)) { return false;  }
+            try
+            {
+                File.Delete(obj.File);
+                DebugMsg("BackUp file deleted! Name: " + new FileInfo(obj.File).Name);
+                //TODO delete from info file
+                return true;
+            } catch { return false; }
+        }
+
         #endregion
 
         #region "SERIALIZATION"
@@ -538,11 +590,26 @@ namespace DataManagementSystem
             public readonly string ProjectFile;
             public readonly string AutoSaveFile;
 
-            public DMSFileInfo(DateTime Time, string ToProject, string ToAutoSave)
+            public DMSFileInfo(DateTime creationTime, string toProject, string toAutoSave)
             {
-                CreationTime = Time;
-                ProjectFile = ToProject;
-                AutoSaveFile = ToAutoSave;
+                CreationTime = creationTime;
+                ProjectFile = toProject;
+                AutoSaveFile = toAutoSave;
+            }
+        }
+
+        [Serializable()]
+        public class DMSBackupInfo
+        {
+            public readonly DateTime CreationTime;
+            public readonly string Message;
+            public readonly string File;
+
+            public DMSBackupInfo(DateTime creationTime, string message, string file)
+            {
+                CreationTime = creationTime;
+                Message = message;
+                File = file;
             }
         }
 
