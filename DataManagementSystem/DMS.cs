@@ -517,7 +517,8 @@ namespace DataManagementSystem
             }
             if(empty.Count > 0)
             {
-                foreach (DMSBackupInfo i in empty) DeleteBackUp(i);
+                foreach (DMSBackupInfo i in empty) backupDB.items.Remove(i);
+                SaveBackupDatabase();
                 return true;
             }
             return false;
