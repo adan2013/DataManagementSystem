@@ -15,10 +15,11 @@ namespace DataManagementSystem
         const string AS_PREFIX = "AS-DMS-";
         const string AS_INFO_PREFIX = "AS-INFO-DMS-";
         const string BU_PREFIX = "BU-DMS-";
-        const string BU_INFO_PREFIX = "BU-INFO-DMS-";
+        const string BU_DATABASE_PREFIX = "BU-DATABASE-DMS-";
 
         const string TEMP_FILE_EXT = ".dms";
         const string INFO_FILE_EXT = ".dmsinfo";
+        const string DATABASE_FILE_EXT = ".dmsdatabase";
 
         const int DEFAULT_UR_LIMIT = 8;
 
@@ -107,6 +108,7 @@ namespace DataManagementSystem
         int pLimitUndoRedo = DEFAULT_UR_LIMIT;
         Timer AutoSaveTMR = new Timer();
         string backupwarehouse = "";
+        DMSBackupDatabase backupDB = new DMSBackupDatabase();
 
         //STRUCT
         private struct UndoRedoInfo
@@ -384,7 +386,7 @@ namespace DataManagementSystem
             bool r = SerializeObject(ref DataObject, d + f);
             if (r)
             {
-                DMSFileInfo i = new DMSFileInfo(DateTime.Now, PathToFile, d + f);
+                DMSAutosaveInfo i = new DMSAutosaveInfo(DateTime.Now, PathToFile, d + f);
                 SerializeInfo(ref i, d + AS_INFO_PREFIX + UID + INFO_FILE_EXT);
                 DebugMsg("New AutoSave! File: \"" + f + "\"");
                 AutoSaveCreated?.Invoke(ref DataObject);
@@ -409,7 +411,7 @@ namespace DataManagementSystem
             }
         }
 
-        public void LoadRestoreFile()
+        public void LoadFromRestoreFile()
         {
             if (RestoreMode)
             {
@@ -436,8 +438,8 @@ namespace DataManagementSystem
         {
             if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_PREFIX + UID + TEMP_FILE_EXT))
             {
-                DMSFileInfo i = DeserializeInfo(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_INFO_PREFIX + UID + INFO_FILE_EXT);
-                if (i == null) i = new DMSFileInfo(DateTime.Now, "", "");
+                DMSAutosaveInfo i = DeserializeInfo(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_INFO_PREFIX + UID + INFO_FILE_EXT);
+                if (i == null) i = new DMSAutosaveInfo(DateTime.Now, "", "");
                 RestoreMode = true;
                 DebugMsg("Data ready to recover! Use LoadRestoreFile() or DeleteRestoreFile() to choose what you want to do...");
                 AutoSaveDetected?.Invoke(i.CreationTime, i.ProjectFile, i.AutoSaveFile);
@@ -466,16 +468,17 @@ namespace DataManagementSystem
             if (activation)
             {
                 DebugMsg("BackUp activated! Warehouse: \"" + warehouse + "\"");
+                LoadBackupDatabase();
             }
         }
 
-        public bool CreateBackUp()
+        public bool CreateBackUp(string message)
         {
             //TODO createbackup
             return true;
         }
 
-        public List<DMSBackupInfo> GetBackUpList()
+        public List<DMSBackupInfo> GetBackUpList(bool deleteNoFileItems = false)
         {
             List<DMSBackupInfo> lst = new List<DMSBackupInfo>();
             //TODO getbackuplist
@@ -488,16 +491,44 @@ namespace DataManagementSystem
             return true;
         }
 
-        public bool DeleteBackUpFile(DMSBackupInfo obj)
+        public bool DeleteBackUp(DMSBackupInfo obj)
         {
             if(obj==null || !File.Exists(obj.File)) { return false;  }
             try
             {
                 File.Delete(obj.File);
                 DebugMsg("BackUp file deleted! Name: " + new FileInfo(obj.File).Name);
-                //TODO delete from info file
                 return true;
             } catch { return false; }
+        }
+
+        private bool LoadBackupDatabase()
+        {
+            DMSBackupDatabase i = DeserializeDatabase(backupwarehouse + "\\" + BU_DATABASE_PREFIX + UID + DATABASE_FILE_EXT);
+            if (i == null)
+            {
+                backupDB = new DMSBackupDatabase();
+                DebugMsg("Backup database loading error!");
+                return false;
+            }
+            else
+            {
+                backupDB = i;
+                DebugMsg("Backup database has been loaded!");
+                return true;
+            }
+        }
+
+        private bool SaveBackupDatabase()
+        {
+            if(backupwarehouse == "" || !Directory.Exists(backupwarehouse)) { return false; }
+            if(backupDB == null) { backupDB = new DMSBackupDatabase(); }
+            if(SerializeDatabase(ref backupDB, backupwarehouse + "\\" + BU_DATABASE_PREFIX + UID + DATABASE_FILE_EXT))
+            {
+                DebugMsg("Backup database saved!");
+                return true;
+            }
+            return false;
         }
 
         #endregion
@@ -542,7 +573,7 @@ namespace DataManagementSystem
             }
         }
 
-        private bool SerializeInfo(ref DMSFileInfo obj, string path)
+        private bool SerializeInfo(ref DMSAutosaveInfo obj, string path)
         {
             try
             {
@@ -556,41 +587,71 @@ namespace DataManagementSystem
             } catch { return false; }
         }
 
-        private DMSFileInfo DeserializeInfo(string path)
+        private DMSAutosaveInfo DeserializeInfo(string path)
         {
             try
             {
-                DMSFileInfo o;
+                DMSAutosaveInfo o;
                 IFormatter formatter = new BinaryFormatter();
                 using (Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read))
                 {
-                    o = (DMSFileInfo)formatter.Deserialize(stream);
+                    o = (DMSAutosaveInfo)formatter.Deserialize(stream);
                 }
                 return o;
             } catch { return null; }
         }
 
-        #endregion
+        private bool SerializeDatabase(ref DMSBackupDatabase obj, string path)
+        {
+            try
+            {
+                IFormatter formatter = new BinaryFormatter();
+                using (Stream stream = new FileStream(path, FileMode.Create, FileAccess.Write))
+                {
+                    formatter.Serialize(stream, obj);
+                    stream.Close();
+                }
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private DMSBackupDatabase DeserializeDatabase(string path)
+        {
+            try
+            {
+                DMSBackupDatabase o;
+                IFormatter formatter = new BinaryFormatter();
+                using (Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read))
+                {
+                    o = (DMSBackupDatabase)formatter.Deserialize(stream);
+                }
+                return o;
+            }
+            catch { return null; }
+        }
+
+            #endregion
 
         #region "DEBUG"
 
-        private void DebugMsg(string message)
-        {
-        #if DEBUG
-            System.Diagnostics.Debug.WriteLine(DEBUG_PREFIX + message);
-        #endif
-        }
+            private void DebugMsg(string message)
+            {
+            #if DEBUG
+                System.Diagnostics.Debug.WriteLine(DEBUG_PREFIX + message);
+            #endif
+            }
 
         #endregion
 
         [Serializable()]
-        private class DMSFileInfo
+        private class DMSAutosaveInfo
         {
             public readonly DateTime CreationTime;
             public readonly string ProjectFile;
             public readonly string AutoSaveFile;
 
-            public DMSFileInfo(DateTime creationTime, string toProject, string toAutoSave)
+            public DMSAutosaveInfo(DateTime creationTime, string toProject, string toAutoSave)
             {
                 CreationTime = creationTime;
                 ProjectFile = toProject;
@@ -610,6 +671,17 @@ namespace DataManagementSystem
                 CreationTime = creationTime;
                 Message = message;
                 File = file;
+            }
+        }
+
+        [Serializable()]
+        public class DMSBackupDatabase
+        {
+            public List<DMSBackupInfo> items;
+
+            public DMSBackupDatabase()
+            {
+                items = new List<DMSBackupInfo>();
             }
         }
 
