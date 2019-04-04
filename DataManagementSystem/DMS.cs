@@ -43,8 +43,8 @@ namespace DataManagementSystem
         public bool FileChanged { get; private set; }
 
         public bool UndoRedoActivated { get; private set; }
-        public bool AutoSaveActivated { get; private set; }
-        public bool BackUpActivated { get; private set; }
+        public bool AutosaveActivated { get; private set; }
+        public bool BackupActivated { get; private set; }
 
         public bool UndoAvailable
         {
@@ -106,8 +106,8 @@ namespace DataManagementSystem
         Stack<UndoRedoInfo> RedoHistory = new Stack<UndoRedoInfo>();
 
         int pLimitUndoRedo = DEFAULT_UR_LIMIT;
-        Timer AutoSaveTMR = new Timer();
-        string backupwarehouse = "";
+        Timer AutosaveTMR = new Timer();
+        string backupWarehouse = "";
         DMSBackupDatabase backupDB = new DMSBackupDatabase();
 
         //STRUCT
@@ -137,7 +137,7 @@ namespace DataManagementSystem
             //UNDOREDO
             DeleteCheckPoints();
             //AUTOSAVE
-            AutoSaveTMR.Elapsed += TimerTick;
+            AutosaveTMR.Elapsed += TimerTick;
         }
 
         private bool ValidateID(string input)
@@ -364,12 +364,12 @@ namespace DataManagementSystem
                 activation = false;
                 interval = 30;
             }
-            AutoSaveActivated = activation;
-            AutoSaveTMR.Enabled = false;
-            AutoSaveTMR.Interval = interval * 60000;
+            AutosaveActivated = activation;
+            AutosaveTMR.Enabled = false;
+            AutosaveTMR.Interval = interval * 60000;
             if(activation)
             {
-                AutoSaveTMR.Enabled = true;
+                AutosaveTMR.Enabled = true;
                 DebugMsg("AutoSave activated! Interval: " + interval + " minutes");
             }
         }
@@ -463,8 +463,8 @@ namespace DataManagementSystem
                 activation = false;
                 warehouse = "";
             }
-            BackUpActivated = activation;
-            backupwarehouse = warehouse;
+            BackupActivated = activation;
+            backupWarehouse = warehouse;
             if (activation)
             {
                 DebugMsg("BackUp activated! Warehouse: \"" + warehouse + "\"");
@@ -472,31 +472,97 @@ namespace DataManagementSystem
             }
         }
 
-        public bool CreateBackUp(string message)
+        public bool CreateBackUp(string message = "")
         {
-            //TODO createbackup
-            return true;
+            if(!BackupActivated)
+            {
+                DebugMsg("Backup disabled!");
+                return false;
+            }
+            string guid = Guid.NewGuid().ToString();
+            string d = backupWarehouse + "\\";
+            string f = BU_PREFIX + UID + "-" + guid + TEMP_FILE_EXT;
+            bool r = SerializeObject(ref DataObject, d + f);
+            if (r)
+            {
+                backupDB.items.Add(new DMSBackupInfo(DateTime.Now, message, d + f));
+                SaveBackupDatabase();
+                DebugMsg("New Backup! File: \"" + f + "\"");
+                return true;
+            }
+            return false;
         }
 
-        public List<DMSBackupInfo> GetBackUpList(bool deleteNoFileItems = false)
+        public List<DMSBackupInfo> GetBackUpList()
         {
-            List<DMSBackupInfo> lst = new List<DMSBackupInfo>();
-            //TODO getbackuplist
-            return lst;
+            if (!BackupActivated)
+            {
+                DebugMsg("Backup disabled!");
+                return new List<DMSBackupInfo>();
+            }
+            return backupDB.items;
         }
 
-        public bool LoadFromBackUp(DMSBackupInfo obj)
+        public bool DeleteEmptyBackups()
         {
-            //TODO loadfrombackup
-            return true;
+            if (!BackupActivated)
+            {
+                DebugMsg("Backup disabled!");
+                return false;
+            }
+            List<DMSBackupInfo> empty = new List<DMSBackupInfo>();
+            foreach(DMSBackupInfo i in backupDB.items)
+            {
+                if(!File.Exists(i.File)) { empty.Add(i); }
+            }
+            if(empty.Count > 0)
+            {
+                foreach (DMSBackupInfo i in empty) DeleteBackUp(i);
+                return true;
+            }
+            return false;
+        }
+
+        public bool LoadFromBackUp(DMSBackupInfo obj, bool replaceFile)
+        {
+            if (!BackupActivated)
+            {
+                DebugMsg("Backup disabled!");
+                return false;
+            }
+            try
+            {
+                if (LoadFromFile(obj.File))
+                {
+                    FileChanged = true;
+                    DebugMsg("The data was restored successfully!");
+                    if (replaceFile)
+                    {
+                        return SaveChanges();
+                    }
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            catch { return false; }
         }
 
         public bool DeleteBackUp(DMSBackupInfo obj)
         {
-            if(obj==null || !File.Exists(obj.File)) { return false;  }
+            if (!BackupActivated)
+            {
+                DebugMsg("Backup disabled!");
+                return false;
+            }
+            if (obj==null || !File.Exists(obj.File)) { return false;  }
             try
             {
                 File.Delete(obj.File);
+                backupDB.items.Remove(obj);
+                SaveBackupDatabase();
                 DebugMsg("BackUp file deleted! Name: " + new FileInfo(obj.File).Name);
                 return true;
             } catch { return false; }
@@ -504,7 +570,12 @@ namespace DataManagementSystem
 
         private bool LoadBackupDatabase()
         {
-            DMSBackupDatabase i = DeserializeDatabase(backupwarehouse + "\\" + BU_DATABASE_PREFIX + UID + DATABASE_FILE_EXT);
+            if (!BackupActivated)
+            {
+                DebugMsg("Backup disabled!");
+                return false;
+            }
+            DMSBackupDatabase i = DeserializeDatabase(backupWarehouse + "\\" + BU_DATABASE_PREFIX + UID + DATABASE_FILE_EXT);
             if (i == null)
             {
                 backupDB = new DMSBackupDatabase();
@@ -521,9 +592,14 @@ namespace DataManagementSystem
 
         private bool SaveBackupDatabase()
         {
-            if(backupwarehouse == "" || !Directory.Exists(backupwarehouse)) { return false; }
+            if (!BackupActivated)
+            {
+                DebugMsg("Backup disabled!");
+                return false;
+            }
+            if (backupWarehouse == "" || !Directory.Exists(backupWarehouse)) { return false; }
             if(backupDB == null) { backupDB = new DMSBackupDatabase(); }
-            if(SerializeDatabase(ref backupDB, backupwarehouse + "\\" + BU_DATABASE_PREFIX + UID + DATABASE_FILE_EXT))
+            if(SerializeDatabase(ref backupDB, backupWarehouse + "\\" + BU_DATABASE_PREFIX + UID + DATABASE_FILE_EXT))
             {
                 DebugMsg("Backup database saved!");
                 return true;
