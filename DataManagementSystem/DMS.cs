@@ -27,15 +27,15 @@ namespace DataManagementSystem
         public event FileSavedDelegate FileSaved;
         public event FileUpdatedDelegate FileUpdated;
 
-        public event AutoSaveCreatedDelegate AutoSaveCreated;
-        public event AutoSaveDetectedDelegate AutoSaveDetected;
+        public event AutosaveCreatedDelegate AutosaveCreated;
+        public event AutosaveDetectedDelegate AutosaveDetected;
 
         //DELEGATES
         public delegate void FileSavedDelegate(DMS<T> sender, string path);
         public delegate void FileUpdatedDelegate(ref T obj);
 
-        public delegate void AutoSaveCreatedDelegate(ref T obj);
-        public delegate void AutoSaveDetectedDelegate(DateTime time, string project, string autosave);
+        public delegate void AutosaveCreatedDelegate(ref T obj);
+        public delegate void AutosaveDetectedDelegate(DateTime time, string project, string autosave);
 
         //READONLY PROPERTIES
         public string UID { get; private set; }
@@ -356,11 +356,11 @@ namespace DataManagementSystem
 
         #region "AUTOSAVE"
 
-        public void AutoSaveService(bool activation, int interval)
+        public void AutosaveService(bool activation, int interval)
         {
             if (interval < 1 | interval > 30)
             {
-                DebugMsg("Correct value of AutoSave Interval: 1-30. AutoSave disabled!");
+                DebugMsg("Correct value of Autosave Interval: 1-30. Autosave disabled!");
                 activation = false;
                 interval = 30;
             }
@@ -370,15 +370,15 @@ namespace DataManagementSystem
             if(activation)
             {
                 AutosaveTMR.Enabled = true;
-                DebugMsg("AutoSave activated! Interval: " + interval + " minutes");
+                DebugMsg("Autosave activated! Interval: " + interval + " minutes");
             }
         }
         
-        public bool CreateAutoSaveFile()
+        public bool CreateAutosaveFile()
         {
             if (RestoreMode)
             {
-                DebugMsg("AutoSave is disabled in \"Restore Mode\"!");
+                DebugMsg("Autosave is disabled in \"Restore Mode\"!");
                 return false;
             }
             string d = Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\";
@@ -388,8 +388,8 @@ namespace DataManagementSystem
             {
                 DMSAutosaveInfo i = new DMSAutosaveInfo(DateTime.Now, PathToFile, d + f);
                 SerializeInfo(ref i, d + AS_INFO_PREFIX + UID + INFO_FILE_EXT);
-                DebugMsg("New AutoSave! File: \"" + f + "\"");
-                AutoSaveCreated?.Invoke(ref DataObject);
+                DebugMsg("New Autosave! File: \"" + f + "\"");
+                AutosaveCreated?.Invoke(ref DataObject);
             }
             return r;
         }
@@ -406,7 +406,7 @@ namespace DataManagementSystem
                         File.Delete(Environment.GetFolderPath(Environment.SpecialFolder.Templates) + "\\" + AS_INFO_PREFIX + UID + INFO_FILE_EXT);
                     }
                     RestoreMode = false;
-                    DebugMsg("AutoSave file deleted!");
+                    DebugMsg("Autosave file deleted!");
                 } catch { }
             }
         }
@@ -442,24 +442,24 @@ namespace DataManagementSystem
                 if (i == null) i = new DMSAutosaveInfo(DateTime.Now, "", "");
                 RestoreMode = true;
                 DebugMsg("Data ready to recover! Use LoadRestoreFile() or DeleteRestoreFile() to choose what you want to do...");
-                AutoSaveDetected?.Invoke(i.CreationTime, i.ProjectFile, i.AutoSaveFile);
+                AutosaveDetected?.Invoke(i.CreationTime, i.ProjectFile, i.AutosaveFile);
             }
         }
 
         private void TimerTick(Object source, ElapsedEventArgs e)
         {
-            CreateAutoSaveFile();
+            CreateAutosaveFile();
         }
 
         #endregion
 
         #region "BACKUP"
 
-        public void BackUpService(bool activation, string warehouse)
+        public void BackupService(bool activation, string warehouse)
         {
             if (!Directory.Exists(warehouse))
             {
-                DebugMsg("Directory with backups doesn't exist!. BackUp disabled!");
+                DebugMsg("Directory with backups doesn't exist!. Backup disabled!");
                 activation = false;
                 warehouse = "";
             }
@@ -467,12 +467,12 @@ namespace DataManagementSystem
             backupWarehouse = warehouse;
             if (activation)
             {
-                DebugMsg("BackUp activated! Warehouse: \"" + warehouse + "\"");
+                DebugMsg("Backup activated! Warehouse: \"" + warehouse + "\"");
                 LoadBackupDatabase();
             }
         }
 
-        public bool CreateBackUp(string message = "")
+        public bool CreateBackup(string message = "")
         {
             if(!BackupActivated)
             {
@@ -493,7 +493,7 @@ namespace DataManagementSystem
             return false;
         }
 
-        public List<DMSBackupInfo> GetBackUpList()
+        public List<DMSBackupInfo> GetBackupList()
         {
             if (!BackupActivated)
             {
@@ -524,7 +524,7 @@ namespace DataManagementSystem
             return false;
         }
 
-        public bool LoadFromBackUp(DMSBackupInfo obj, bool replaceFile)
+        public bool LoadFromBackup(DMSBackupInfo obj, bool replaceFile)
         {
             if (!BackupActivated)
             {
@@ -551,20 +551,23 @@ namespace DataManagementSystem
             catch { return false; }
         }
 
-        public bool DeleteBackUp(DMSBackupInfo obj)
+        public bool DeleteBackup(DMSBackupInfo obj)
         {
             if (!BackupActivated)
             {
                 DebugMsg("Backup disabled!");
                 return false;
             }
-            if (obj==null || !File.Exists(obj.File)) { return false;  }
+            if (obj==null) { return false; }
             try
             {
-                File.Delete(obj.File);
+                if(File.Exists(obj.File))
+                {
+                    File.Delete(obj.File);
+                }
                 backupDB.items.Remove(obj);
                 SaveBackupDatabase();
-                DebugMsg("BackUp file deleted! Name: " + new FileInfo(obj.File).Name);
+                DebugMsg("Backup deleted! Name: " + new FileInfo(obj.File).Name);
                 return true;
             } catch { return false; }
         }
@@ -708,7 +711,7 @@ namespace DataManagementSystem
             catch { return null; }
         }
 
-            #endregion
+        #endregion
 
         #region "DEBUG"
 
@@ -726,13 +729,13 @@ namespace DataManagementSystem
         {
             public readonly DateTime CreationTime;
             public readonly string ProjectFile;
-            public readonly string AutoSaveFile;
+            public readonly string AutosaveFile;
 
-            public DMSAutosaveInfo(DateTime creationTime, string toProject, string toAutoSave)
+            public DMSAutosaveInfo(DateTime creationTime, string toProject, string toAutosave)
             {
                 CreationTime = creationTime;
                 ProjectFile = toProject;
-                AutoSaveFile = toAutoSave;
+                AutosaveFile = toAutosave;
             }
         }
 
