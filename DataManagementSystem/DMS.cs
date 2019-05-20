@@ -158,6 +158,19 @@ namespace DataManagementSystem
 
         #region "RECOVERY"
 
+        public bool LoadFileAndClearPath()
+        {
+            if (PathToFile == "")
+            {
+                DebugMsg("Use \"SaveAs\" to define the save path!");
+                return false;
+            }
+            bool r = LoadFromSource();
+            PathToFile = "";
+            FileChanged = true;
+            return r;
+        }
+
         public bool LoadFromSource()
         {
             if (PathToFile == "")
