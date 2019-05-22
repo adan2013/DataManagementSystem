@@ -24,6 +24,7 @@ namespace DataManagementSystem
         const int DEFAULT_UR_LIMIT = 8;
 
         //EVENTS
+        public event FileStatusChangedDelegate FileStatusChanged;
         public event FileSavedDelegate FileSaved;
         public event FileUpdatedDelegate FileUpdated;
 
@@ -31,16 +32,25 @@ namespace DataManagementSystem
         public event AutosaveDetectedDelegate AutosaveDetected;
 
         //DELEGATES
+        public delegate void FileStatusChangedDelegate(bool newvalue);
         public delegate void FileSavedDelegate(DMS<T> sender, string path);
         public delegate void FileUpdatedDelegate(ref T obj);
 
         public delegate void AutosaveCreatedDelegate(ref T obj);
         public delegate void AutosaveDetectedDelegate(DateTime time, string project, string autosave);
 
-        //READONLY PROPERTIES
+        //PROPERTIES
         public string UID { get; private set; }
         public string PathToFile { get; private set; }
-        public bool FileChanged { get; private set; }
+        public bool FileChanged
+        {
+            get { return pFileChanged; }
+            private set
+            {
+                pFileChanged = value;
+                FileStatusChanged?.Invoke(pFileChanged);
+            }
+        }
 
         public bool UndoRedoActivated { get; private set; }
         public bool AutosaveActivated { get; private set; }
@@ -77,7 +87,6 @@ namespace DataManagementSystem
 
         public bool RestoreMode { get; private set; }
 
-        //PROPERTIES
         public int LimitUndoRedo
         {
             get
@@ -105,6 +114,7 @@ namespace DataManagementSystem
         UndoRedoInfo CurrentCP = new UndoRedoInfo("", "");
         Stack<UndoRedoInfo> RedoHistory = new Stack<UndoRedoInfo>();
 
+        bool pFileChanged = false;
         int pLimitUndoRedo = DEFAULT_UR_LIMIT;
         Timer AutosaveTMR = new Timer();
         string backupWarehouse = "";
@@ -641,8 +651,8 @@ namespace DataManagementSystem
                 DebugMsg("Serialization successful! File: \"" + path + "\"");
                 return true;
             }
-            catch {
-                DebugMsg("Serialization error! File: \"" + path + "\"");
+            catch(Exception e) {
+                DebugMsg("Serialization error! File: \"" + path + "\"" + " Error: \"" + e.Message + "\"");
                 return false;
             }
         }
@@ -660,8 +670,8 @@ namespace DataManagementSystem
                 DebugMsg("Deserialization successful! File: \"" + path + "\"");
                 return o;
             }
-            catch {
-                DebugMsg("Deserialization error! File: \"" + path + "\"");
+            catch(Exception e) {
+                DebugMsg("Deserialization error! File: \"" + path + "\"" + " Error: \"" + e.Message + "\"");
                 return null;
             }
         }
